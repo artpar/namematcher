@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/antzucaro/matchr"
 	"github.com/tealeg/xlsx"
 	"github.com/xrash/smetrics"
 	"os"
@@ -41,23 +42,97 @@ func main() {
 	//	fmt.Printf("%s\n\n", dict1)
 	//	fmt.Printf("%s", dict2)
 
+	matches := make([]Match, 0)
 	for _, name := range dict1 {
 		for _, otherName := range dict2 {
-			name1 := strings.Join(name, " ")
-			name2 := strings.Join(otherName, " ")
+			name1 := strings.Join(name.NameParts, " ")
+			name2 := strings.Join(otherName.NameParts, " ")
 			level := smetrics.JaroWinkler(name1, name2, 0.7, 4)
-			if level > threshHold {
-				fmt.Printf(" %f - %s <==> %s\n", level, name1, name2)
+			score := matchr.DamerauLevenshtein(name1, name2)
+			initialsMatchScore := initialMatch(name.Initials, otherName.Initials)
+			match := Match{Name1: name, Name2: otherName, Score: []float64{level, float64(score), float64(initialsMatchScore)}}
+			matches = append(matches, match)
+		}
+	}
+	sort.Sort(Matches(matches))
+	var perfectMatches []Name = make([]Name, 0)
+	for _, match := range matches {
+		if match.Score[0] > 0.999 && match.Score[1] < 1 && match.Score[2] < 1 {
+			perfectMatches = append(perfectMatches, match.Name1)
+		}
+	}
+	for _, match := range matches {
+		if match.Score[0] < threshHold && match.Score[1] > 0 {
+			continue
+		}
+		if match.Score[1] > 5 {
+			continue
+		}
+		if match.Score[2] > 0.0 {
+			continue
+		}
+		isPerfect := false
+		for _, p := range perfectMatches {
+			if (match.Name1.Original == p.Original || match.Name2.Original == p.Original) && (match.Name2.Original != match.Name1.Original) {
+				isPerfect = true
 			}
 		}
+		if isPerfect {
+			continue
+		}
+		fmt.Printf(" %f - %f - [%s] %s <==> [%s] %s - [%f]\n", match.Score[0], match.Score[2], match.Name1.Initials, match.Name1.Original, match.Name2.Initials, match.Name2.Original, match.Score[1])
 	}
 }
 
-type NameParts []string
-type NameDict []NameParts
+func initialMatch(s1, s2 string) int {
+	bigger, smaller := s1, s2
+	if len(s1) < len(s2) {
+		bigger, smaller = s2, s1
+	}
+	lastIndex := -1
+	for _, char := range smaller {
+		found := strings.IndexRune(string(bigger[lastIndex+1:]), char)
+		if found < 0 {
+			return 1
+		}
+		lastIndex = found
+	}
+	return 0
+}
 
-func (a NameParts) Len() int {
-	return len(a)
+type Match struct {
+	Name1 Name
+	Name2 Name
+	Score []float64
+}
+
+type Matches []Match
+
+func (m Matches) Len() int {
+	return len(m)
+}
+
+func (m Matches) Swap(i, j int) {
+	m[i], m[j] = m[j], m[i]
+}
+
+func (m Matches) Less(i, j int) bool {
+	return m[i].Score[0] > m[j].Score[0]
+}
+
+type Matcher interface {
+	Match(s1, s2 string) int
+}
+
+type Name struct {
+	Original  string
+	NameParts []string
+	Initials  string
+}
+type NameDict []Name
+
+func (a Name) Len() int {
+	return len(a.NameParts)
 }
 
 func (a NameDict) Len() int {
@@ -69,16 +144,16 @@ func (a NameDict) Swap(i, j int) {
 }
 
 func (a NameDict) Less(i, j int) bool {
-
-	return a[i][0][0] < a[j][0][0]
+	return a[i].NameParts[0][0] < a[j].NameParts[0][0]
 }
 
-func makeNameDictionary(file *xlsx.File, colNumber int) []NameParts {
-	dict1 := make([]NameParts, 0)
+func makeNameDictionary(file *xlsx.File, colNumber int) []Name {
+	dict1 := make([]Name, 0)
 	sheet1 := file.Sheets[0]
 	for _, row := range sheet1.Rows {
 		for i, cell := range row.Cells {
-			if i != colNumber {
+			if uint(i) != uint(colNumber) {
+				//			if i != colNumber {
 				continue
 			}
 			name := strings.Trim(cell.Value, "\n \t")
@@ -94,10 +169,18 @@ func makeNameDictionary(file *xlsx.File, colNumber int) []NameParts {
 				nameParts[i] = strings.Trim(nameParts[i], " \t\n")
 			}
 			sort.Strings(nameParts)
-			dict1 = append(dict1, nameParts)
+			dict1 = append(dict1, Name{Original: strings.Join(nameParts, " "), NameParts: nameParts, Initials: getInitials(nameParts)})
 		}
 		//		fmt.Println()
 	}
 	sort.Sort(NameDict(dict1))
 	return dict1
+}
+
+func getInitials(parts []string) string {
+	var name []string = make([]string, len(parts))
+	for i, p := range parts {
+		name[i] = string(p[0])
+	}
+	return strings.Join(name, "")
 }
