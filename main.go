@@ -49,8 +49,9 @@ func main() {
 			name2 := strings.Join(otherName.NameParts, " ")
 			level := smetrics.JaroWinkler(name1, name2, 0.7, 4)
 			score := matchr.DamerauLevenshtein(name1, name2)
+			smith := matchr.SmithWaterman(name1, name2)
 			initialsMatchScore := initialMatch(name.Initials, otherName.Initials)
-			match := Match{Name1: name, Name2: otherName, Score: []float64{level, float64(score), float64(initialsMatchScore)}}
+			match := Match{Name1: name, Name2: otherName, Score: []float64{level, float64(score), float64(initialsMatchScore), float64(smith)}}
 			matches = append(matches, match)
 		}
 	}
@@ -65,10 +66,14 @@ func main() {
 		if match.Score[0] < threshHold && match.Score[1] > 0 {
 			continue
 		}
-		if match.Score[1] > 5 {
+		if match.Score[1] > 12 && match.Score[0] < 0.7 {
 			continue
 		}
 		if match.Score[2] > 0.0 {
+			continue
+		}
+
+		if match.Score[3] < 6 {
 			continue
 		}
 		isPerfect := false
@@ -80,7 +85,9 @@ func main() {
 		if isPerfect {
 			continue
 		}
-		fmt.Printf(" %f - %f - [%s] %s <==> [%s] %s - [%f]\n", match.Score[0], match.Score[2], match.Name1.Initials, match.Name1.Original, match.Name2.Initials, match.Name2.Original, match.Score[1])
+		//		fmt.Printf("[%s] %s <==> [%s] %s \n", match.Name1.Initials, match.Name1.Original, match.Name2.Initials, match.Name2.Original)
+		fmt.Printf("[%f] %f - [%s] %s <==> [%s] %s - [%f]\n", match.Score[3], match.Score[0], match.Name1.Initials, match.Name1.Original, match.Name2.Initials, match.Name2.Original, match.Score[1])
+		//		fmt.Printf("%s\n%s\n", match.Name1.Actual, match.Name2.Actual)
 	}
 }
 
@@ -125,6 +132,7 @@ type Matcher interface {
 }
 
 type Name struct {
+	Actual    string
 	Original  string
 	NameParts []string
 	Initials  string
@@ -169,7 +177,7 @@ func makeNameDictionary(file *xlsx.File, colNumber int) []Name {
 				nameParts[i] = strings.Trim(nameParts[i], " \t\n")
 			}
 			sort.Strings(nameParts)
-			dict1 = append(dict1, Name{Original: strings.Join(nameParts, " "), NameParts: nameParts, Initials: getInitials(nameParts)})
+			dict1 = append(dict1, Name{Actual: name, Original: strings.Join(nameParts, " "), NameParts: nameParts, Initials: getInitials(nameParts)})
 		}
 		//		fmt.Println()
 	}
