@@ -22,13 +22,16 @@ func main() {
 		panic(err)
 	}
 
-	threshHold, err := strconv.ParseFloat(args[4], 32)
-	if err != nil {
-		panic(err)
+	var threshHold float64
+	if len(args) >= 5 {
+		threshHold, err = strconv.ParseFloat(args[4], 32)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		threshHold = 0.0
 	}
 
-	//	names1 := make([]string, 0)
-	// xlsfile2 := xlsx.OpenFile(args[1])
 	file1Column, err := strconv.Atoi(args[1])
 	if err != nil {
 		panic(err)
@@ -39,8 +42,6 @@ func main() {
 	}
 	dict1 := makeNameDictionary(xlsfile1, file1Column)
 	dict2 := makeNameDictionary(xlsfile2, file2Column)
-	//	fmt.Printf("%s\n\n", dict1)
-	//	fmt.Printf("%s", dict2)
 
 	matches := make([]Match, 0)
 	for _, name := range dict1 {
